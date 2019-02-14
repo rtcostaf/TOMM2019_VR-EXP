@@ -16,6 +16,9 @@
 //default value
 int NUM_THREADS = 3;
 
+char HEURISTIC_A = 0; // FD Heuristic
+char HEURISTIC_B = 1; // FDB Heuristic
+
 char *video_id;
 char *destination;
 
@@ -33,6 +36,8 @@ int* outside;
 int* viewport_error;
 int* adjacency_error;
 int* outside_error;
+
+int BUFFER_LIMIT = 2;
 
 struct timeval beg, end, last_load, former_last_load;
 
@@ -157,6 +162,8 @@ void downloadZ2(void *ptr){
 
   for (jTile = aux->lower_limit; jTile <= aux->upper_limit; jTile++){
             
+
+
             buildURL(url, destination, video_id, mleni, mlenj, resolutionAdj, adjacency[jTile], aux->i);
             
             curl_easy_setopt(curl2, CURLOPT_URL, url);
@@ -168,14 +175,14 @@ void downloadZ2(void *ptr){
             curl_easy_getinfo(curl2, CURLINFO_TOTAL_TIME, &ttime);
             
 
-            gettimeofday(&last_load, NULL);
+           // gettimeofday(&last_load, NULL);
             elapsed = tvdiff_secs(last_load, beg);
             bitrate = (8.0 * volume) / ttime;
             if (bitrate > maxbitrate) maxbitrate = bitrate; 
             
             double local_sum = 0.0; 
             
-            pthread_mutex_lock(&mutex_control);
+            //pthread_mutex_lock(&mutex_control);
            
             avgbitratez2 += bitrate;
             tiles_count_global++;
@@ -187,16 +194,18 @@ void downloadZ2(void *ptr){
                local_sum += avg_window[j];
             }
             
-            pthread_mutex_unlock(&mutex_control);
+            //pthread_mutex_unlock(&mutex_control);
 
             local_avg = local_sum / local_avg_window_size;
             
             refAdj = local_avg; //< bitrate ? local_avg : bitrate);
             
+            /*
             pthread_mutex_lock(&mutex_control);
             fprintf(flog, "%lf;%d;%s;%lf;%lf;%lf;%lf;%lf;adj\n", elapsed, aux->i, resolutionAdj, refAdj, local_avg, bitrate, volume, ttime);
             fflush(flog);
             pthread_mutex_unlock(&mutex_control);
+            */
 
         }
         curl_easy_cleanup(curl2);
@@ -233,6 +242,8 @@ void downloadZ3(void *ptr){
 
   for (jTile = aux->lower_limit; jTile <= aux->upper_limit; jTile++){
             
+            //printf("Z3: lower: %d | upper: %d \n",getpid(), pthread_self(), aux->lower_limit, aux->upper_limit);
+
             buildURL(url, destination, video_id, mleni, mlenj, resolutionOut, outside[jTile], aux->i);
             
             curl_easy_setopt(curl2, CURLOPT_URL, url);
@@ -244,14 +255,15 @@ void downloadZ3(void *ptr){
             curl_easy_getinfo(curl2, CURLINFO_TOTAL_TIME, &ttime);
             
 
-            gettimeofday(&last_load, NULL);
+            //gettimeofday(&last_load, NULL);
             elapsed = tvdiff_secs(last_load, beg);
             bitrate = (8.0 * volume) / ttime;
             
             if (bitrate > maxbitrate) maxbitrate = bitrate; 
             double local_sum = 0.0;
 
-            pthread_mutex_lock(&mutex_control);
+
+            //pthread_mutex_lock(&mutex_control);
             avgbitratez3 += bitrate;
             avg_window[current_index] = bitrate;
             tiles_count_global++;
@@ -263,17 +275,18 @@ void downloadZ3(void *ptr){
                local_sum += avg_window[j];
             }
 
-            pthread_mutex_unlock(&mutex_control);
+            //pthread_mutex_unlock(&mutex_control);
             
             local_avg = local_sum / local_avg_window_size;
             
             refOut = local_avg;
             
+            /*
             pthread_mutex_lock(&mutex_control);
             fprintf(flog, "%lf;%d;%s;%lf;%lf;%lf;%lf;%lf;out\n", elapsed, aux->i, resolutionOut, refOut, local_avg, bitrate, volume, ttime);
             fflush(flog);
             pthread_mutex_unlock(&mutex_control);
-
+            */
         }
         curl_easy_cleanup(curl2);
         //free(ptr);
@@ -430,6 +443,8 @@ int main(int argc, char **argv)
   int contIR=0;
 
   CURLcode res;
+
+  char heuristic;
   
   int stall_count = 0;
   
@@ -457,8 +472,8 @@ int main(int argc, char **argv)
   
   int i = 1; 
   
-  if (argc < 11){
-     printf("usage: cplayer <destination> <video_id> <segment_count> <uuid> <tracefile> <time_limit(sec)> <lines_i(4)> <column_j(8)> <error_rate> <num_threads>\n:");
+  if (argc < 12){
+     printf("usage: cplayer <destination> <video_id> <segment_count> <uuid> <tracefile> <time_limit(sec)> <lines_i(4)> <column_j(8)> <error_rate> <num_threads> <heuristic> <buffer_size>\n:");
      return(-1);
   }
 
@@ -468,6 +483,8 @@ int main(int argc, char **argv)
   int error_rate = atoi(argv[9]);
   NUM_THREADS = atoi(argv[10]);
 
+  heuristic = atoi(argv[11]);
+  BUFFER_LIMIT = atoi(argv[12]);
   pthread_t threadsId[NUM_THREADS + 1];
 
   int k,l;
@@ -772,12 +789,17 @@ int main(int argc, char **argv)
                     strcat(resolutionAdj, "4K");
                     strcat(resolutionAdj, "\0");
                 }
-                if(strcmp(resolutionOut, "1080") != 0){
+                if (heuristic == HEURISTIC_A){
+
+                  if(strcmp(resolutionOut, "1080") != 0){
                     switchOut++;
                     resolutionOut[0] = '\0';
-                  strcat(resolutionOut, "1080");
-                  strcat(resolutionOut, "\0");
+                    strcat(resolutionOut, "1080");
+                    strcat(resolutionOut, "\0");
+                  }
+
                 }
+                
                 c6++;
                 
           }else{
@@ -794,11 +816,13 @@ int main(int argc, char **argv)
                     strcat(resolutionAdj, "4K");
                     strcat(resolutionAdj, "\0");
                 }
-                if(strcmp(resolutionOut, "4K") != 0){
-                    switchOut++;
-                    resolutionOut[0] = '\0';
-                  strcat(resolutionOut, "4K");
-                  strcat(resolutionOut, "\0");
+                if (heuristic == HEURISTIC_A){
+                  if(strcmp(resolutionOut, "4K") != 0){
+                      switchOut++;
+                      resolutionOut[0] = '\0';
+                    strcat(resolutionOut, "4K");
+                    strcat(resolutionOut, "\0");
+                  }
                 }
                 c7++;
                
@@ -832,7 +856,7 @@ int main(int argc, char **argv)
 
             res = curl_easy_perform(curl);
 
-            gettimeofday(&last_load, NULL);
+            //gettimeofday(&last_load, NULL);
             elapsed = tvdiff_secs(last_load, beg);
 
             curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD, &volume);
@@ -858,8 +882,8 @@ int main(int argc, char **argv)
         
             refVp = local_avg;// < bitrate ? local_avg : bitrate);
 
-            fprintf(flog, "%lf;%d;%s;%lf;%lf;%lf;%lf;%lf;vp\n", elapsed, i, resolutionVp, refVp, local_avg, bitrate, volume, ttime);
-            fflush(flog);
+            //fprintf(flog, "%lf;%d;%s;%lf;%lf;%lf;%lf;%lf;vp\n", elapsed, i, resolutionVp, refVp, local_avg, bitrate, volume, ttime);
+            //fflush(flog);
         
         }
       
@@ -930,18 +954,18 @@ int main(int argc, char **argv)
 
         auxNum = (NUM_THREADS < len_outside ? NUM_THREADS : len_outside);
 
-        upper = len_outside-1; 
-        
+        //upper = len_outside-1; 
+       
+
         //donwload tiles from outside (or zone Z3)
         for(int cont_thread = 0; cont_thread < auxNum; cont_thread++){
             if(cont_thread == NUM_THREADS - 1){ 
-              
+                            
               upper = len_outside-1; 
               struct arg_struct *args = malloc(sizeof(struct arg_struct));
               args->i = i;
               args->lower_limit = lower;
               args->upper_limit = upper;
-              
               pthread_create(&threadsId[cont_thread], NULL, downloadZ3, (void *)args);
           
           }else{
@@ -971,7 +995,6 @@ int main(int argc, char **argv)
         
         }else{
 
-          
           time_from_last_load = tvdiff_secs(last_load, former_last_load);
           buffer_time = buffer_time - time_from_last_load;
 
@@ -983,11 +1006,267 @@ int main(int argc, char **argv)
                buffer_time = buffer_time + SEGMENT_TIME;
            }
 
+
+           //injected error
+
+          if(rand() % 100 <= error_rate){
+            contIR++;
+            int len_viewport_error  = 0;
+            int len_adjacency_error = 0;
+            int len_outside_error   = 0;
+
+            double error_x = randfrom(-3.14, 3.14);
+            double error_y = randfrom(-1.57, 1.57);
+
+            coordToViewPort(matrix, output_error, mleni, mlenj, error_x, error_y, 1, 1);
+            viewPortToAdjacency(matrix, output_error, mleni, mlenj, 1, viewport_error, &len_viewport_error, adjacency_error, &len_adjacency_error, outside_error, &len_outside_error);
+            
+            for(int i_aux = 0; i_aux < len_viewport_error; i_aux++){
+                
+                for(int j_aux = 0; j_aux < len_adjacency; j_aux++){
+
+                    if (viewport_error[i_aux] == adjacency[j_aux]){
+                        
+                        if (strcmp(resolutionVp, "4K") == 0){
+                          if (strcmp(resolutionAdj, "720") == 0){
+                              cont4kz1--;
+                              cont720z1++;
+                          }else if(strcmp(resolutionAdj, "1080") == 0 ){
+                              cont4kz1--;
+                              cont1080z1++;
+                          }
+
+                        }else if (strcmp(resolutionVp, "1080") == 0){
+                          if (strcmp(resolutionAdj, "720") == 0){
+                              cont1080z1--;
+                              cont720z1++;
+                          }else if(strcmp(resolutionAdj, "4K") == 0){
+                              cont4kz1++;
+                              cont1080z1--;
+                          }
+                        }else if (strcmp(resolutionVp, "720") == 0){
+                          if (strcmp(resolutionAdj, "1080") == 0){
+                              cont1080z1++;
+                              cont720z1--;
+                          }else if(strcmp(resolutionAdj, "4K") == 0){
+                              cont4kz1++;
+                              cont720z1--;
+                          }
+                        }
+                    }
+
+                }
+                for(int j_aux = 0; j_aux < len_outside; j_aux++){
+                    if (viewport_error[i_aux] == outside[j_aux]){
+                        
+                        if (strcmp(resolutionVp, "4K") == 0){
+                          if (strcmp(resolutionOut, "720") == 0){
+                              cont4kz1--;
+                              cont720z1++;
+                              
+                          }else if(strcmp(resolutionOut, "1080") == 0 ){
+                              cont4kz1--;
+                              cont1080z1++;
+                              
+                          }
+
+                        }else if (strcmp(resolutionVp, "1080") == 0){
+                          if (strcmp(resolutionOut, "720") == 0){
+                              cont1080z1--;
+                              cont720z1++;
+                          }else if(strcmp(resolutionOut, "4K") == 0 ){
+                              cont4kz1++;
+                              cont1080z1--;
+                          }
+                        }else if (strcmp(resolutionVp, "720") == 0){
+                          if (strcmp(resolutionOut, "4K") == 0){
+                              cont720z1--;
+                              cont4kz1++;
+                          }else if(strcmp(resolutionOut, "1080") == 0 ){
+                              cont720z1--;
+                              cont1080z1++;
+                          }
+                        }
+                        
+                    }
+
+                }
+
+              }
+             
+             //error in z2
+             for(int i_aux = 0; i_aux < len_adjacency_error; i_aux++){
+
+                for(int j_aux = 0; j_aux < len_viewport; j_aux++){
+                    if (adjacency_error[i_aux] == viewport[j_aux]){
+
+                        if (strcmp(resolutionAdj, "4K") == 0){
+                          if (strcmp(resolutionVp, "720") == 0){
+                              cont4kz2--;
+                              cont720z2++;
+
+                          }else if(strcmp(resolutionVp, "1080") == 0){
+                              cont4kz2--;
+                              cont1080z2++;
+                          }
+
+                        }else if (strcmp(resolutionAdj, "1080") == 0){
+                          if (strcmp(resolutionVp, "720") == 0){
+                              cont1080z2--;
+                              cont720z2++;
+                          }else if (strcmp(resolutionVp, "4K") == 0){
+                              cont1080z2--;
+                              cont4kz2++;
+                          }
+                        }else if (strcmp(resolutionAdj, "720") == 0){
+                          if (strcmp(resolutionVp, "1080") == 0){
+                              cont1080z2++;
+                              cont720z2--;
+                          }else if (strcmp(resolutionVp, "4K") == 0){
+                              cont720z2--;
+                              cont4kz2++;
+                          }
+                        }
+
+                    }
+
+                }
+
+                for(int j_aux = 0; j_aux < len_outside; j_aux++){
+                    if (adjacency_error[i_aux] == outside[j_aux]){
+
+                        if (strcmp(resolutionAdj, "4K") == 0){
+                          if (strcmp(resolutionOut, "720") == 0){
+                              cont4kz2--;
+                              cont720z2++;
+                          }else if(strcmp(resolutionOut, "1080") == 0 ){
+                              cont4kz2--;
+                              cont1080z2++;
+                          }
+                          
+                        }else if (strcmp(resolutionAdj, "1080") == 0){
+                          if (strcmp(resolutionOut, "720") == 0){
+                              cont1080z2--;
+                              cont720z2++;
+                          }else if (strcmp(resolutionOut, "4K") == 0){
+                              cont1080z2--;
+                              cont4kz2++;
+                          }
+                        }else if (strcmp(resolutionAdj, "720") == 0){
+                          if (strcmp(resolutionOut, "1080") == 0){
+                              cont1080z2++;
+                              cont720z2--;
+                          }else if (strcmp(resolutionOut, "4K") == 0){
+                              cont720z2--;
+                              cont4kz2++;
+                          }
+                        }
+                        //break;
+                    }
+
+                }
+
+              }
+
+              //verifica os tiles do outside
+              for(int i_aux = 0; i_aux < len_outside_error; i_aux++){
+
+                  for(int j_aux = 0; j_aux < len_viewport; j_aux++){
+                    if(outside_error[i_aux] == viewport[j_aux]){
+
+
+                        if(strcmp(resolutionOut, "720") == 0){
+                          if (strcmp(resolutionVp, "1080") == 0){
+                             cont720z3--;
+                             cont1080z3++;
+                          }else if (strcmp(resolutionVp, "4K") == 0){
+                             cont720z3--;
+                             cont4kz3++;
+                          }
+
+                        }
+                        if(strcmp(resolutionOut, "1080") == 0){
+
+                          if (strcmp(resolutionVp, "720") == 0){
+                             cont1080z3--;
+                             cont720z3++;
+                          }else if (strcmp(resolutionVp, "4K") == 0){
+                             cont1080z3--;
+                             cont4kz3++;
+                          }
+                        }
+                        if(strcmp(resolutionOut, "4K") == 0){
+
+                          if (strcmp(resolutionVp, "720") == 0){
+                             cont4kz3--;
+                             cont720z3++;
+                          }else if (strcmp(resolutionVp, "1080") == 0){
+                             cont1080z3++;
+                             cont4kz3--;
+                          }
+
+                        }
+
+
+                        
+                    }
+
+                  }
+
+                  for(int j_aux = 0; j_aux < len_adjacency; j_aux++){
+                    if (outside_error[i_aux] == adjacency[j_aux]){
+
+
+                        if(strcmp(resolutionOut, "720") == 0){
+
+                           if (strcmp(resolutionAdj, "1080") == 0){
+                              cont720z3--;
+                              cont1080z3++;
+                           }else if (strcmp(resolutionAdj, "4K") == 0){
+                              cont720z3--;
+                              cont4kz3++;
+                           }
+
+                        }
+
+                        if(strcmp(resolutionOut, "1080") == 0){
+
+                           if (strcmp(resolutionAdj, "720") == 0){
+                              cont720z3++;
+                              cont1080z3--;
+                           }else if (strcmp(resolutionAdj, "4K") == 0){
+                              cont1080z3--;
+                              cont4kz3++;
+                           }
+
+                        }
+
+                        if(strcmp(resolutionOut, "4K") == 0){
+
+                          if (strcmp(resolutionAdj, "720") == 0){
+                             cont4kz3--;
+                             cont720z3++;
+                          }else if (strcmp(resolutionAdj, "1080") == 0){
+                             cont1080z3++;
+                             cont4kz3--;
+                          }
+
+                        }
+
+                    }
+                    
+                  }
+
+              }
+
+          }
+
         }
         
         former_last_load = last_load;
         
         if (buffer_time > BUFFER_LIMIT){
+           buffer_time = buffer_time - INTERVAL;
            sleep(INTERVAL); //Interval = segment length (in seconds)
         }
 
