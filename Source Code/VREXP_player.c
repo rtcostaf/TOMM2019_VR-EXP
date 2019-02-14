@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <math.h>
-#define BUFFER_LIMIT 2
 #define INTERVAL 1 //time to sleep
 #define SEGMENT_TIME 1 
 #define AVERAGE_WINDOW_SIZE 5
