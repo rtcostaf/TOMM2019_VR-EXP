@@ -8,7 +8,7 @@ The easiest way to get started on VR-EXP is to download the pre-configured virtu
 https://www.virtualbox.org/
 
 2. Download the Virtual Machine (approx. 6GB).
-https://drive.google.com/open?id=1QgUPzpEth5eqsfsbdX0vxV8r2EuBHt_o
+https://drive.google.com/file/d/18E2iGYxb7epfJpOWOuwfhW23xSUDSOoA/view?usp=sharing
 
 3. After the download is complete, import the vrexp.ova file into your system by using the option VirtualBox -> “Import Appliance”.
 
